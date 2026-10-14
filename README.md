@@ -1,5 +1,14 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## LINE webhook
+
+Set these environment variables in `.env.local` for local development and in the Vercel project settings for deployment:
+
+- `LINE_CHANNEL_SECRET` — the channel secret from the channel's Basic settings in the LINE Developers Console.
+- `LINE_CHANNEL_ACCESS_TOKEN` — the channel access token from the Messaging API settings.
+
+Set the webhook URL to `https://<your-domain>/api/webhook` in the LINE Developers Console. The endpoint verifies the `x-line-signature` header against the raw request body before parsing events. It replies to text messages with the same text; LINE's webhook verification request with an empty `events` array is acknowledged with `200`.
+
 ## Getting Started
 
 First, run the development server:
