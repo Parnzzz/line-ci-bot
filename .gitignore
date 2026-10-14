@@ -9,7 +9,12 @@
 !.yarn/plugins
 !.yarn/releases
 !.yarn/versions
-.env.local
+
+
+# Environment variables and secrets
+.env
+.env.*
+!.env.example
 
 # testing
 /coverage
