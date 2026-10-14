@@ -1,7 +1,5 @@
 import { createHmac, timingSafeEqual } from "node:crypto";
 
-export const runtime = "nodejs";
-
 function hasValidSignature(rawBody, signature, channelSecret) {
   if (!signature) return false;
 
