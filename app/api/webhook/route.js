@@ -169,29 +169,45 @@ console.log(
       if (action === "status" || action === "latest") {
         const owner = process.env.GITHUB_OWNER;
         const repo = process.env.GITHUB_REPO;
-        const headers = {
-          Accept: "application/vnd.github+json",
-          ...(process.env.GITHUB_TOKEN
-            ? { Authorization: `Bearer ${process.env.GITHUB_TOKEN}` }
-            : {}),
-        };
+        const githubToken = process.env.GITHUB_TOKEN;
 
-        try {
-          const response = await fetch(
-            `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`,
-            { headers, cache: "no-store" }
-          );
+        if (!owner || !repo) {
+          message = "ยังไม่ได้ตั้งค่า GITHUB_OWNER หรือ GITHUB_REPO ใน Vercel";
+        } else {
+          const headers = {
+            Accept: "application/vnd.github+json",
+            ...(githubToken ? { Authorization: `Bearer ${githubToken}` } : {}),
+          };
 
-          if (!response.ok) throw new Error("GitHub API request failed");
+          try {
+            const response = await fetch(
+              `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`,
+              { headers, cache: "no-store" }
+            );
 
-          const result = await response.json();
-          const run = result.workflow_runs?.[0];
+            if (response.status === 404) {
+              message = "ไม่พบ GitHub repository นี้ ตรวจ GITHUB_OWNER และ GITHUB_REPO หรือสิทธิ์เข้าถึง repository ส่วนตัว";
+            } else if (response.status === 401 || response.status === 403) {
+              console.error("GitHub Actions API rejected the request:", response.status);
+              message = `GitHub ปฏิเสธคำขอ (${response.status}) ตรวจ GITHUB_TOKEN และสิทธิ์อ่าน Actions ของ repository`;
+            } else if (!response.ok) {
+              console.error("GitHub Actions API request failed:", response.status);
+              message = `GitHub API ตอบกลับข้อผิดพลาด (${response.status}) กรุณาลองใหม่`;
+            } else {
+              const result = await response.json();
+              const run = result.workflow_runs?.[0];
 
-          message = run
-            ? `Flutter CI: ${run.status === "completed" ? run.conclusion : run.status}\nBranch: ${run.head_branch}\nWorkflow: ${run.name}\nดูรายละเอียด: ${run.html_url}`
-            : "ยังไม่พบ Workflow Run";
-        } catch {
-          message = "ดึงสถานะจาก GitHub ไม่สำเร็จ กรุณาตรวจสอบ GITHUB_OWNER และ GITHUB_REPO";
+              message = run
+                ? `Flutter CI: ${run.status === "completed" ? run.conclusion : run.status}\nBranch: ${run.head_branch}\nWorkflow: ${run.name}\nดูรายละเอียด: ${run.html_url}`
+                : "ยังไม่พบ Workflow Run";
+            }
+          } catch (error) {
+            console.error(
+              "GitHub Actions API connection failed:",
+              error?.cause?.code ?? "unknown"
+            );
+            message = "เชื่อมต่อ GitHub API ไม่สำเร็จ กรุณาลองใหม่";
+          }
         }
       }
     }
@@ -202,17 +218,26 @@ console.log(
 
     console.log("Menu shown:", isMenuCommand);
 
-    const replyResponse = await fetch("https://api.line.me/v2/bot/message/reply", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${token}`,
-      },
-      body: JSON.stringify({
-        replyToken: event.replyToken,
-        messages,
-      }),
-    });
+    let replyResponse;
+    try {
+      replyResponse = await fetch("https://api.line.me/v2/bot/message/reply", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          replyToken: event.replyToken,
+          messages,
+        }),
+      });
+    } catch (error) {
+      console.error(
+        "LINE Reply API connection failed:",
+        error?.cause?.code ?? "unknown"
+      );
+      return new Response("LINE reply failed", { status: 502 });
+    }
 
     console.log("LINE Reply Status:", replyResponse.status);
     if (!replyResponse.ok) {
