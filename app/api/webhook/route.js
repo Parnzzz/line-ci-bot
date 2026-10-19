@@ -83,7 +83,7 @@ console.log(
       }
     }
 
-    const isText = xt = event.type === "message" && event.message?.type === "text";
+    const isText = event.type === "message" && event.message?.type === "text";
 
     const messages = isText
       ? [{
@@ -120,10 +120,9 @@ console.log(
         }]
       : [{ type: "text", text: message }];
 
-    console.log("Reply messages:", JSON.stringify(messages));
-    console.log("Has Quick Reply:", Boolean(messages[0]?.quickReply));  
+    console.log("Has Quick Reply:", Boolean(messages[0]?.quickReply));
 
-   const replyResponse = await fetch("https://api.line.me/v2/bot/message/reply", {
+    const replyResponse = await fetch("https://api.line.me/v2/bot/message/reply", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -134,8 +133,12 @@ console.log(
         messages,
       }),
     });
+
+    console.log("LINE Reply Status:", replyResponse.status);
+    if (!replyResponse.ok) {
+      return new Response("LINE reply failed", { status: 502 });
+    }
   }
-  console.log("LINE Reply Status:", replyResponse.status);
-  console.log("LINE Reply Body:", await replyResponse.text());
+
   return new Response("OK", { status: 200 });
 }
