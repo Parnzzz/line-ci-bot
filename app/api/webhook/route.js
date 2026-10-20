@@ -165,10 +165,21 @@ async function getWorkflowRunJobs(owner, repo, runId, headers) {
   return { jobs: result.jobs ?? [] };
 }
 
-function formatWorkflowJobs(jobs) {
-  return jobs.length
-    ? jobs.map((job) => `  • ${job.name}: ${formatWorkflowRunStatus(job)}`).join("\n")
-    : "  • ไม่พบ Job ใน run นี้";
+function formatWorkflowJobs(jobs, { includeSteps = false } = {}) {
+  if (!jobs.length) return "  • ไม่พบ Job ใน run นี้";
+
+  return jobs
+    .map((job) => {
+      const jobLine = `  • ${job.name}: ${formatWorkflowRunStatus(job)}`;
+      if (!includeSteps) return jobLine;
+
+      const stepLines = (job.steps ?? [])
+        .map((step) => `    ◦ ${step.name}: ${formatWorkflowRunStatus(step)}`)
+        .join("\n");
+
+      return [jobLine, stepLines].filter(Boolean).join("\n");
+    })
+    .join("\n");
 }
 
 export async function POST(request) {
@@ -331,7 +342,9 @@ console.log(
                         : formatWorkflowRunStatus(run);
                       const branch = run?.head_branch ? ` · ${run.head_branch}` : "";
                       const detailsUrl = run?.html_url ?? workflow.html_url;
-                      const jobLines = run ? `\n${formatWorkflowJobs(jobs)}` : "";
+                      const jobLines = run
+                        ? `\n${formatWorkflowJobs(jobs, { includeSteps: true })}`
+                        : "";
 
                       return `• ${name}: ${status}${branch}${jobLines}\n${detailsUrl}`;
                     });
