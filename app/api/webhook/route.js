@@ -141,6 +141,26 @@ function formatWorkflowRunStatus(run) {
   return conclusionLabels[run.conclusion] ?? "❔";
 }
 
+function formatWorkflowRunStartedAt(run) {
+  if (!run?.run_started_at) return "ยังไม่เริ่ม";
+
+  const date = new Date(run.run_started_at);
+  if (Number.isNaN(date.getTime())) return "ไม่ระบุเวลา";
+
+  return new Intl.DateTimeFormat("th-TH", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "Asia/Bangkok",
+  }).format(date);
+}
+
+function getWorkflowRunCommitMessage(run) {
+  const message = run.head_commit?.message?.split(/\r?\n/, 1)[0]?.trim();
+  if (!message) return "ไม่พบข้อความ commit";
+
+  return message.length > 160 ? `${message.slice(0, 157)}…` : message;
+}
+
 function getGitHubActionsErrorMessage(status) {
   if (status === 404) {
     return "ไม่พบ GitHub repository นี้ ตรวจ GITHUB_OWNER และ GITHUB_REPO หรือสิทธิ์เข้าถึง repository ส่วนตัว";
@@ -386,7 +406,7 @@ console.log(
                     }
                     message = getGitHubActionsErrorMessage(jobsResult.errorStatus);
                   } else {
-                    message = `Workflow: ${run.name}\nสถานะ: ${formatWorkflowRunStatus(run)}\nBranch: ${run.head_branch}\nJobs:\n${formatWorkflowJobs(jobsResult.jobs)}\nดูรายละเอียด: ${run.html_url}`;
+                    message = `Workflow: ${run.name}\nสถานะ: ${formatWorkflowRunStatus(run)}\nBranch: ${run.head_branch}\nเริ่ม: ${formatWorkflowRunStartedAt(run)}\nCommit: ${getWorkflowRunCommitMessage(run)}\nJobs:\n${formatWorkflowJobs(jobsResult.jobs)}\nดูรายละเอียด: ${run.html_url}`;
                   }
                 }
               }
