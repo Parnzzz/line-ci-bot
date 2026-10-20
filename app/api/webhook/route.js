@@ -113,32 +113,32 @@ function createMenuMessage() {
 }
 
 function formatWorkflowRunStatus(run) {
-  if (!run) return "ยังไม่เคยรัน";
+  if (!run) return "⚪";
 
   if (run.status !== "completed") {
     const statusLabels = {
-      queued: "รอคิว",
-      in_progress: "กำลังทำงาน",
-      waiting: "กำลังรอ",
-      requested: "รอเริ่ม",
-      pending: "กำลังรอ",
+      queued: "⏳",
+      in_progress: "🔄",
+      waiting: "⏳",
+      requested: "⏳",
+      pending: "⏳",
     };
 
-    return statusLabels[run.status] ?? run.status;
+    return statusLabels[run.status] ?? "❔";
   }
 
   const conclusionLabels = {
-    success: "สำเร็จ",
-    failure: "ล้มเหลว",
-    cancelled: "ยกเลิก",
-    skipped: "ข้าม",
-    timed_out: "หมดเวลา",
-    action_required: "ต้องดำเนินการ",
-    neutral: "ไม่มีผลสรุป",
-    stale: "สถานะไม่อัปเดต",
+    success: "✅",
+    failure: "❌",
+    cancelled: "🚫",
+    skipped: "➖",
+    timed_out: "⏱️",
+    action_required: "⚠️",
+    neutral: "⚪",
+    stale: "🕒",
   };
 
-  return conclusionLabels[run.conclusion] ?? run.conclusion ?? "เสร็จแล้ว";
+  return conclusionLabels[run.conclusion] ?? "❔";
 }
 
 function getGitHubActionsErrorMessage(status) {
@@ -327,7 +327,7 @@ console.log(
                     const lines = workflowStatuses.map(({ workflow, run, jobs = [], disabled }) => {
                       const name = workflow.name ?? workflow.path.split("/").pop();
                       const status = disabled
-                        ? "ปิดใช้งาน"
+                        ? "⏸️"
                         : formatWorkflowRunStatus(run);
                       const branch = run?.head_branch ? ` · ${run.head_branch}` : "";
                       const detailsUrl = run?.html_url ?? workflow.html_url;
