@@ -166,9 +166,19 @@ async function getWorkflowRunJobs(owner, repo, runId, headers) {
 }
 
 function formatWorkflowJobs(jobs) {
-  return jobs.length
-    ? jobs.map((job) => `  • ${job.name}: ${formatWorkflowRunStatus(job)}`).join("\n")
-    : "  • ไม่พบ Job ใน run นี้";
+  if (!jobs.length) return "  • ไม่พบ Job ใน run นี้";
+
+  return jobs
+    .map((job) => {
+      const stepLines = (job.steps ?? [])
+        .map((step) => `    ◦ ${step.name}: ${formatWorkflowRunStatus(step)}`)
+        .join("\n");
+
+      return [`  • ${job.name}: ${formatWorkflowRunStatus(job)}`, stepLines]
+        .filter(Boolean)
+        .join("\n");
+    })
+    .join("\n");
 }
 
 export async function POST(request) {
