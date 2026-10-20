@@ -9,6 +9,24 @@ Set these environment variables in `.env.local` for local development and in the
 
 Set the webhook URL to `https://<your-domain>/api/webhook` in the LINE Developers Console. The endpoint verifies the `x-line-signature` header against the raw request body before parsing events. It replies to text messages with the same text; LINE's webhook verification request with an empty `events` array is acknowledged with `200`.
 
+## LINE Rich Menu
+
+The rich menu image is `public/rich-menu.png`. It has two postback areas that use the existing `action=status` and `action=latest` webhook actions.
+
+Run a dry run from PowerShell:
+
+```powershell
+.\scripts\apply-rich-menu.ps1
+```
+
+To create the menu through the LINE Messaging API and set it as the default for the Official Account, run:
+
+```powershell
+.\scripts\apply-rich-menu.ps1 -Apply
+```
+
+The script prompts for the LINE channel access token without displaying it and does not print the token. Applying the menu changes the default rich menu for all users who open the Official Account chat. The setup stops if a menu with the same name already exists, to avoid creating duplicates.
+
 ## Getting Started
 
 First, run the development server:

@@ -112,6 +112,47 @@ function createMenuMessage() {
   };
 }
 
+function formatWorkflowRunStatus(run) {
+  if (!run) return "ยังไม่เคยรัน";
+
+  if (run.status !== "completed") {
+    const statusLabels = {
+      queued: "รอคิว",
+      in_progress: "กำลังทำงาน",
+      waiting: "กำลังรอ",
+      requested: "รอเริ่ม",
+      pending: "กำลังรอ",
+    };
+
+    return statusLabels[run.status] ?? run.status;
+  }
+
+  const conclusionLabels = {
+    success: "สำเร็จ",
+    failure: "ล้มเหลว",
+    cancelled: "ยกเลิก",
+    skipped: "ข้าม",
+    timed_out: "หมดเวลา",
+    action_required: "ต้องดำเนินการ",
+    neutral: "ไม่มีผลสรุป",
+    stale: "สถานะไม่อัปเดต",
+  };
+
+  return conclusionLabels[run.conclusion] ?? run.conclusion ?? "เสร็จแล้ว";
+}
+
+function getGitHubActionsErrorMessage(status) {
+  if (status === 404) {
+    return "ไม่พบ GitHub repository นี้ ตรวจ GITHUB_OWNER และ GITHUB_REPO หรือสิทธิ์เข้าถึง repository ส่วนตัว";
+  }
+
+  if (status === 401 || status === 403) {
+    return `GitHub ปฏิเสธคำขอ (${status}) ตรวจ GITHUB_TOKEN และสิทธิ์อ่าน Actions ของ repository`;
+  }
+
+  return `GitHub API ตอบกลับข้อผิดพลาด (${status}) กรุณาลองใหม่`;
+}
+
 export async function POST(request) {
   const body = await request.text();
   const signature = request.headers.get("x-line-signature");
@@ -180,26 +221,102 @@ console.log(
           };
 
           try {
-            const response = await fetch(
-              `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`,
-              { headers, cache: "no-store" }
-            );
+            const endpoint = action === "status"
+              ? `https://api.github.com/repos/${owner}/${repo}/actions/workflows?per_page=100`
+              : `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`;
+            const response = await fetch(endpoint, { headers, cache: "no-store" });
 
-            if (response.status === 404) {
-              message = "ไม่พบ GitHub repository นี้ ตรวจ GITHUB_OWNER และ GITHUB_REPO หรือสิทธิ์เข้าถึง repository ส่วนตัว";
-            } else if (response.status === 401 || response.status === 403) {
-              console.error("GitHub Actions API rejected the request:", response.status);
-              message = `GitHub ปฏิเสธคำขอ (${response.status}) ตรวจ GITHUB_TOKEN และสิทธิ์อ่าน Actions ของ repository`;
-            } else if (!response.ok) {
-              console.error("GitHub Actions API request failed:", response.status);
-              message = `GitHub API ตอบกลับข้อผิดพลาด (${response.status}) กรุณาลองใหม่`;
+            if (!response.ok) {
+              if (response.status === 401 || response.status === 403) {
+                console.error("GitHub Actions API rejected the request:", response.status);
+              } else {
+                console.error("GitHub Actions API request failed:", response.status);
+              }
+              message = getGitHubActionsErrorMessage(response.status);
             } else {
               const result = await response.json();
-              const run = result.workflow_runs?.[0];
 
-              message = run
-                ? `Flutter CI: ${run.status === "completed" ? run.conclusion : run.status}\nBranch: ${run.head_branch}\nWorkflow: ${run.name}\nดูรายละเอียด: ${run.html_url}`
-                : "ยังไม่พบ Workflow Run";
+              if (action === "status") {
+                const workflows = result.workflows ?? [];
+
+                if (workflows.length === 0) {
+                  message = "ไม่พบ GitHub Actions Workflow ใน repository นี้";
+                } else {
+                  const workflowStatuses = await Promise.all(
+                    workflows.map(async (workflow) => {
+                      if (workflow.state !== "active") {
+                        return { workflow, run: null, disabled: true };
+                      }
+
+                      const runsResponse = await fetch(
+                        `https://api.github.com/repos/${owner}/${repo}/actions/workflows/${workflow.id}/runs?per_page=1`,
+                        { headers, cache: "no-store" }
+                      );
+
+                      if (!runsResponse.ok) {
+                        return { workflow, errorStatus: runsResponse.status };
+                      }
+
+                      const runsResult = await runsResponse.json();
+                      return {
+                        workflow,
+                        run: runsResult.workflow_runs?.[0] ?? null,
+                      };
+                    })
+                  );
+
+                  const failedRequest = workflowStatuses.find(
+                    (item) => item.errorStatus
+                  );
+
+                  if (failedRequest) {
+                    if (failedRequest.errorStatus === 401 || failedRequest.errorStatus === 403) {
+                      console.error(
+                        "GitHub Actions API rejected the request:",
+                        failedRequest.errorStatus
+                      );
+                    } else {
+                      console.error(
+                        "GitHub Actions API request failed:",
+                        failedRequest.errorStatus
+                      );
+                    }
+                    message = getGitHubActionsErrorMessage(failedRequest.errorStatus);
+                  } else {
+                    workflowStatuses.sort((a, b) =>
+                      (a.workflow.name ?? a.workflow.path).localeCompare(
+                        b.workflow.name ?? b.workflow.path
+                      )
+                    );
+
+                    const lines = workflowStatuses.map(({ workflow, run, disabled }) => {
+                      const name = workflow.name ?? workflow.path.split("/").pop();
+                      const status = disabled
+                        ? "ปิดใช้งาน"
+                        : formatWorkflowRunStatus(run);
+                      const branch = run?.head_branch ? ` · ${run.head_branch}` : "";
+                      const detailsUrl = run?.html_url ?? workflow.html_url;
+
+                      return `• ${name}: ${status}${branch}\n${detailsUrl}`;
+                    });
+
+                    message = "สถานะล่าสุดของ GitHub Actions\n\n";
+                    for (const line of lines) {
+                      const nextMessage = `${message}\n${line}`;
+                      if (nextMessage.length > 4500) {
+                        message += "\n… แสดงรายการบางส่วน";
+                        break;
+                      }
+                      message = nextMessage;
+                    }
+                  }
+                }
+              } else {
+                const run = result.workflow_runs?.[0];
+                message = run
+                  ? `Flutter CI: ${formatWorkflowRunStatus(run)}\nBranch: ${run.head_branch}\nWorkflow: ${run.name}\nดูรายละเอียด: ${run.html_url}`
+                  : "ยังไม่พบ Workflow Run";
+              }
             }
           } catch (error) {
             console.error(
