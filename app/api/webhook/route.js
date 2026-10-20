@@ -153,6 +153,24 @@ function getGitHubActionsErrorMessage(status) {
   return `GitHub API ตอบกลับข้อผิดพลาด (${status}) กรุณาลองใหม่`;
 }
 
+async function getWorkflowRunJobs(owner, repo, runId, headers) {
+  const response = await fetch(
+    `https://api.github.com/repos/${owner}/${repo}/actions/runs/${runId}/jobs?per_page=100`,
+    { headers, cache: "no-store" }
+  );
+
+  if (!response.ok) return { errorStatus: response.status };
+
+  const result = await response.json();
+  return { jobs: result.jobs ?? [] };
+}
+
+function formatWorkflowJobs(jobs) {
+  return jobs.length
+    ? jobs.map((job) => `  • ${job.name}: ${formatWorkflowRunStatus(job)}`).join("\n")
+    : "  • ไม่พบ Job ใน run นี้";
+}
+
 export async function POST(request) {
   const body = await request.text();
   const signature = request.headers.get("x-line-signature");
@@ -258,9 +276,26 @@ console.log(
                       }
 
                       const runsResult = await runsResponse.json();
+                      const run = runsResult.workflow_runs?.[0] ?? null;
+                      if (!run) return { workflow, run: null, jobs: [] };
+
+                      const jobsResult = await getWorkflowRunJobs(
+                        owner,
+                        repo,
+                        run.id,
+                        headers
+                      );
+                      if (jobsResult.errorStatus) {
+                        return {
+                          workflow,
+                          errorStatus: jobsResult.errorStatus,
+                        };
+                      }
+
                       return {
                         workflow,
-                        run: runsResult.workflow_runs?.[0] ?? null,
+                        run,
+                        jobs: jobsResult.jobs,
                       };
                     })
                   );
@@ -289,15 +324,16 @@ console.log(
                       )
                     );
 
-                    const lines = workflowStatuses.map(({ workflow, run, disabled }) => {
+                    const lines = workflowStatuses.map(({ workflow, run, jobs = [], disabled }) => {
                       const name = workflow.name ?? workflow.path.split("/").pop();
                       const status = disabled
                         ? "ปิดใช้งาน"
                         : formatWorkflowRunStatus(run);
                       const branch = run?.head_branch ? ` · ${run.head_branch}` : "";
                       const detailsUrl = run?.html_url ?? workflow.html_url;
+                      const jobLines = run ? `\n${formatWorkflowJobs(jobs)}` : "";
 
-                      return `• ${name}: ${status}${branch}\n${detailsUrl}`;
+                      return `• ${name}: ${status}${branch}${jobLines}\n${detailsUrl}`;
                     });
 
                     message = "สถานะล่าสุดของ GitHub Actions\n\n";
@@ -313,9 +349,33 @@ console.log(
                 }
               } else {
                 const run = result.workflow_runs?.[0];
-                message = run
-                  ? `Flutter CI: ${formatWorkflowRunStatus(run)}\nBranch: ${run.head_branch}\nWorkflow: ${run.name}\nดูรายละเอียด: ${run.html_url}`
-                  : "ยังไม่พบ Workflow Run";
+                if (!run) {
+                  message = "ยังไม่พบ Workflow Run";
+                } else {
+                  const jobsResult = await getWorkflowRunJobs(
+                    owner,
+                    repo,
+                    run.id,
+                    headers
+                  );
+
+                  if (jobsResult.errorStatus) {
+                    if (jobsResult.errorStatus === 401 || jobsResult.errorStatus === 403) {
+                      console.error(
+                        "GitHub Actions API rejected the request:",
+                        jobsResult.errorStatus
+                      );
+                    } else {
+                      console.error(
+                        "GitHub Actions API request failed:",
+                        jobsResult.errorStatus
+                      );
+                    }
+                    message = getGitHubActionsErrorMessage(jobsResult.errorStatus);
+                  } else {
+                    message = `Workflow: ${run.name}\nสถานะ: ${formatWorkflowRunStatus(run)}\nBranch: ${run.head_branch}\nJobs:\n${formatWorkflowJobs(jobsResult.jobs)}\nดูรายละเอียด: ${run.html_url}`;
+                  }
+                }
               }
             }
           } catch (error) {
