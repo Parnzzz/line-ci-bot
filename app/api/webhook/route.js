@@ -166,19 +166,9 @@ async function getWorkflowRunJobs(owner, repo, runId, headers) {
 }
 
 function formatWorkflowJobs(jobs) {
-  if (!jobs.length) return "  • ไม่พบ Job ใน run นี้";
-
-  return jobs
-    .map((job) => {
-      const stepLines = (job.steps ?? [])
-        .map((step) => `    ◦ ${step.name}: ${formatWorkflowRunStatus(step)}`)
-        .join("\n");
-
-      return [`  • ${job.name}: ${formatWorkflowRunStatus(job)}`, stepLines]
-        .filter(Boolean)
-        .join("\n");
-    })
-    .join("\n");
+  return jobs.length
+    ? jobs.map((job) => `  • ${job.name}: ${formatWorkflowRunStatus(job)}`).join("\n")
+    : "  • ไม่พบ Job ใน run นี้";
 }
 
 export async function POST(request) {
@@ -251,7 +241,7 @@ console.log(
           try {
             const endpoint = action === "status"
               ? `https://api.github.com/repos/${owner}/${repo}/actions/workflows?per_page=100`
-              : `https://api.github.com/repos/${owner}/${repo}/actions/runs?per_page=1`;
+              : `https://api.github.com/repos/${owner}/${repo}/actions/workflows/main.yml/runs?per_page=1`;
             const response = await fetch(endpoint, { headers, cache: "no-store" });
 
             if (!response.ok) {
