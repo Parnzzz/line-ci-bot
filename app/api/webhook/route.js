@@ -1,4 +1,8 @@
 import crypto from "node:crypto";
+import {
+  addRecipient,
+  removeRecipient,
+} from "@/services/line-recipient.service";
 
 /*
  * Quick Reply implementation kept for later use.
@@ -231,14 +235,42 @@ export async function POST(request) {
 
   const data = JSON.parse(body);
 
+  for (const event of data.events ?? []) {
+    const userId = event.source?.userId;
+
+    console.log(
+      "Events:",
+      data.events?.map((event) => ({
+        type: event.type,
+        messageType: event.message?.type,
+      }))
+    );
+    try {
+      if (event.type === "follow" && userId) {
+        await addRecipient(userId);
+        console.log("LINE recipient registered:", userId);
+      }
+
+      if (event.type === "unfollow" && userId) {
+        await removeRecipient(userId);
+        console.log("LINE recipient removed:", userId);
+      }
+    } catch (error) {
+      console.error("LINE recipient update failed:", error);
+      return new Response("Recipient update failed", {
+        status: 500,
+      });
+    }
+  }
+
   console.log("LINE WEBHOOK RECEIVED");
-console.log(
-  "Events:",
-  data.events?.map((event) => ({
-    type: event.type,
-    messageType: event.message?.type,
-  }))
-);
+  console.log(
+    "Events:",
+    data.events?.map((event) => ({
+      type: event.type,
+      messageType: event.message?.type,
+    }))
+  );
 
   for (const event of data.events ?? []) {
     if (!event.replyToken || event.replyToken === "00000000000000000000000000000000") {
@@ -247,11 +279,39 @@ console.log(
 
     const isTextMessage =
       event.type === "message" && event.message?.type === "text";
-    const isMenuCommand =
-      isTextMessage && event.message.text.trim().toLowerCase() === "menu";
+
+    const command = isTextMessage
+      ? event.message.text.trim().toLowerCase()
+      : "";
+
+    const isMenuCommand = command === "menu";
+    const isRegisterCommand = command === "register";
+
     let message = isTextMessage
       ? "พิมพ์ menu เพื่อแสดงเมนู"
       : "สวัสดีครับ Arayatime Flutter CI Bot";
+
+    // คำสั่งลงทะเบียนรับแจ้งเตือน
+    if (isRegisterCommand) {
+      const userId = event.source?.userId;
+
+      if (event.source?.type !== "user" || !userId) {
+        message = "ไม่พบ LINE User ID กรุณาส่งคำสั่งผ่านแชตส่วนตัว";
+      } else {
+        try {
+          await addRecipient(userId);
+
+          console.log("LINE recipient registered via command:", userId);
+
+          message =
+            "ลงทะเบียนรับการแจ้งเตือนสำเร็จแล้ว 🎉\nคุณจะได้รับแจ้งเตือนเมื่อ GitHub Actions ทำงาน";
+        } catch (error) {
+          console.error("LINE registration command failed:", error);
+
+          message = "ลงทะเบียนไม่สำเร็จ กรุณาลองใหม่ภายหลัง";
+        }
+      }
+    }
 
     if (event.type === "postback") {
       const action = new URLSearchParams(event.postback?.data ?? "").get("action");
